@@ -46,7 +46,7 @@ const Dashboard = () => {
                 <h3 className="text-2xl font-bold">0</h3>
               </div>
             </div>
-          </div>
+          </Card>
         </div>
 
         <Card className="p-6">

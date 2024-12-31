@@ -23,6 +23,16 @@ const Index = () => {
   const [searching, setSearching] = useState(false);
   const { toast } = useToast();
 
+  const logSearch = async (query: string) => {
+    try {
+      await supabase.from('search_logs').insert([
+        { query, type: 'text' }
+      ]);
+    } catch (error) {
+      console.error('Error logging search:', error);
+    }
+  };
+
   const handleSearch = async () => {
     try {
       setSearching(true);
@@ -40,6 +50,7 @@ const Index = () => {
       if (error) throw error;
 
       setSearchResults(data || []);
+      await logSearch(searchTerm);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -53,15 +64,54 @@ const Index = () => {
 
   const handleImageSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    try {
+      setSearching(true);
       setSearchImage(file);
-      // Note: Implement image search functionality here
-      // This would typically involve sending the image to a backend service
-      // that can process it and return matching results
-      toast({
-        title: "Info",
-        description: "Image search functionality coming soon!",
+
+      // Upload image to Supabase storage
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('person_photos')
+        .upload(`temp/${fileName}`, file);
+
+      if (uploadError) throw uploadError;
+
+      // Get the public URL of the uploaded image
+      const { data: { publicUrl } } = supabase.storage
+        .from('person_photos')
+        .getPublicUrl(`temp/${fileName}`);
+
+      // Call the image search edge function
+      const response = await fetch('/api/image-search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageUrl: publicUrl }),
       });
+
+      if (!response.ok) throw new Error('Image search failed');
+
+      const { results } = await response.json();
+      setSearchResults(results);
+
+      // Clean up temporary upload
+      await supabase.storage
+        .from('person_photos')
+        .remove([`temp/${fileName}`]);
+
+      await logSearch('Image Search');
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || 'Image search failed',
+        variant: "destructive",
+      });
+    } finally {
+      setSearching(false);
     }
   };
 
